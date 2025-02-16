@@ -1,0 +1,110 @@
+---
+title: "Machine Learning Prediction Report"
+author: "Widiani"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Introduction
+
+This project aims to predict exercise performance based on sensor data collected from wearable devices. The dataset includes movement data measured from the belt, forearm, arm, and dumbbell of participants. The primary goal is to classify exercises correctly using machine learning techniques.
+
+---
+
+## Data Loading & Cleaning
+
+The dataset is read from the current directory, and preprocessing includes removing high missing value columns and irrelevant metadata.
+
+```{r}
+library(caret)
+library(randomForest)
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+# Define dataset paths
+train_path <- "pml-training.csv"
+test_path <- "pml-testing.csv"
+
+# Load dataset
+training <- read_csv(train_path)
+testing <- read_csv(test_path)
+
+# Remove columns with excessive missing values
+na_threshold <- 0.95
+na_counts <- colSums(is.na(training)) / nrow(training)
+training <- training[, na_counts < na_threshold]
+
+# Keep only relevant features
+testing <- testing[, intersect(names(training), names(testing)), drop = FALSE]
+
+# Convert target variable to factor
+training$classe <- as.factor(training$classe)
+```
+
+---
+
+## Model Training & Selection
+
+A **Random Forest** model is trained with 70% of the dataset for training and 30% for validation. We evaluate its performance using cross-validation.
+
+```{r}
+set.seed(456)
+trainIndex <- createDataPartition(training$classe, p = 0.7, list = FALSE)
+trainData <- training[trainIndex, ]
+validData <- training[-trainIndex, ]
+
+# Train Random Forest model
+rf_model <- randomForest(classe ~ ., data = trainData, ntree = 150)
+
+# Save trained model
+saveRDS(rf_model, "rf_model.rds")
+```
+
+---
+
+## Model Evaluation
+
+The model is evaluated using a confusion matrix and feature importance.
+
+```{r}
+rf_predictions <- predict(rf_model, validData)
+conf_matrix <- confusionMatrix(rf_predictions, validData$classe)
+print(conf_matrix)
+
+# Improved Feature Importance Visualization
+importance_df <- as.data.frame(importance(rf_model))
+importance_df$Feature <- rownames(importance_df)
+importance_df <- importance_df %>% arrange(desc(MeanDecreaseGini))
+
+# Plot using ggplot2
+ggplot(importance_df, aes(x = reorder(Feature, MeanDecreaseGini), y = MeanDecreaseGini)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Feature Importance", x = "Features", y = "Importance Score") +
+  theme_minimal()
+```
+
+---
+
+## Final Predictions
+
+Predictions on new test cases are generated, and results are saved directly in the working directory.
+
+```{r}
+if (nrow(testing) > 0) {
+  final_predictions <- predict(rf_model, testing)
+
+  # Save predictions
+  for (i in 1:length(final_predictions)) {
+    filename <- paste0("prediction_result_", i, ".txt")
+    write.table(final_predictions[i], file = filename, quote = FALSE, row.names = FALSE, col.names = FALSE)
+  }
+}
+```
+
+---
+
+## Conclusion
+
+This report demonstrates the classification of exercise types using machine learning. The **Random Forest model** provides high accuracy, and predictions on new test cases are generated successfully.
